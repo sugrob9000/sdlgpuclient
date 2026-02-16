@@ -26,7 +26,7 @@ function(compile_shaders target)
       DEPFILE ${depfile}
       COMMAND ${glslc} -MD -MF ${depfile}
         -O
-        --target-env=vulkan1.4 -mfmt=bin
+        --target-env=vulkan1.0 -mfmt=bin
         -o ${spirv} ${source})
     target_sources(${target} PRIVATE ${spirv})
   endforeach()
