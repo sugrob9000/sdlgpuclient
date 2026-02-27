@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 23)
 
 find_package(SDL3 REQUIRED)
 find_package(fmt REQUIRED)
-find_program(glslc glslc)
+find_program(glslc glslc REQUIRED)
 
 add_executable(app src/main.cpp)
 target_link_libraries(app fmt::fmt SDL3::SDL3)

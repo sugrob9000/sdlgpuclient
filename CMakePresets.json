@@ -16,6 +16,15 @@
         "CMAKE_CXX_FLAGS": "-Wall -Wextra -Wattributes -Wno-c23-extensions -Wno-missing-designated-field-initializers",
         "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON"
       }
+    },
+    {
+      "name": "gcc",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-gcc",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_CXX_FLAGS": "-Wall -Wextra -Wattributes -Wno-missing-field-initializers"
+      }
     }
   ]
 }
