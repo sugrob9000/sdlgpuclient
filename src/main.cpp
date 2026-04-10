@@ -4,27 +4,25 @@
 #include <SDL3/SDL.h>
 #include <thread>
 
-struct wm_event_result { bool quit_requested; };
-
-static wm_event_result handle_events(sdl::window_context& wm) {
-  wm_event_result result { .quit_requested = false };
-  while (auto event = wm.next_event(wm.immediate)) {
+static bool handle_events(sdl::window_context& wm) {
+  bool keep_going = true;
+  while (auto event = wm.poll_event()) {
     if (event->type == SDL_EVENT_QUIT
         || (event->type == SDL_EVENT_KEY_DOWN
-            && event->key.key == SDLK_Q
-            && (event->key.mod & SDL_KMOD_SHIFT))) {
-      result.quit_requested = true;
+            && (event->key.mod & SDL_KMOD_SHIFT)
+            && event->key.key == SDLK_Q)) {
+      keep_going = false;
     }
   }
-  return result;
+  return keep_going;
 }
 
 static void render_thread() {
   sdl::init_guard sdl(SDL_INIT_VIDEO);
   sdl::window_context wm("app (shift+Q to quit)", {640, 480});
-  sdl::render_context rc(wm.window.get());
+  sdl::render_context rc(wm.window());
   frame_pacer pacer(60);
-  while (!handle_events(wm).quit_requested) {
+  while (handle_events(wm)) {
     pacer.wait_next();
   }
 }

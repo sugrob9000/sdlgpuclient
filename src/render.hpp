@@ -1,36 +1,64 @@
+#pragma once
+#include "common.hpp"
 #include "sdl.hpp"
 
 namespace sdl {
 
-class render_context {
-  SDL_GPUDevice* device() { return device_handle.get(); }
+// ======================================================================================
+// Wrappers/helpers for making graphics pipelines
 
-  class shader_module {
-    SDL_GPUDevice* device;
-    SDL_GPUShader* shader;
-  public:
-    explicit shader_module(SDL_GPUDevice* device,
-                           SDL_GPUShaderStage stage,
-                           std::span<const uint8_t> spirv):
-      device(device)
-    {
-      SDL_GPUShaderCreateInfo ci = {
-        .code_size = spirv.size(),
-        .code = spirv.data(),
-        .entrypoint = "main",
-        .format = SDL_GPU_SHADERFORMAT_SPIRV,
-        .stage = stage,
+template<typename O, typename I> struct vert_attr {
+  I O::* ptr;
+  SDL_GPUVertexElementFormat format;
+};
+
+template<size_t num_attributes> class vertex_input_state {
+  SDL_GPUVertexBufferDescription buffer_description; // TODO: support 2+ buffers?
+  SDL_GPUVertexAttribute vertex_attributes[num_attributes];
+
+public:
+  explicit vertex_input_state(uint32_t buffer_slot, auto... attr) noexcept {
+    static_assert(sizeof...(attr) == num_attributes);
+    using vertex_type = common_outer_type_t<decltype(attr.ptr)...>;
+    buffer_description = {
+      .slot = buffer_slot,
+      .pitch = sizeof(vertex_type)
+    };
+    uint32_t i = 0;
+    ([&](uint32_t i){
+      vertex_attributes[i] = {
+        .location = i,
+        .format = attr.format,
+        .offset = uint32_t(to_offset(attr.ptr))
       };
-      shader = check_sdl_call(SDL_CreateGPUShader(device, &ci), "create shader");
-    }
-    shader_module(const shader_module&) = delete;
-    ~shader_module() { SDL_ReleaseGPUShader(device, shader); }
-    operator SDL_GPUShader*() const { return shader; }
+    }(i++), ...);
+  }
+
+  operator SDL_GPUVertexInputState() noexcept {
+    return {
+      .vertex_buffer_descriptions = &buffer_description,
+      .num_vertex_buffers = 1,
+      .vertex_attributes = vertex_attributes,
+      .num_vertex_attributes = num_attributes,
+    };
+  }
+};
+vertex_input_state(uint32_t, auto... attr) -> vertex_input_state<sizeof...(attr)>;
+
+// ======================================================================================
+
+class render_context {
+  constexpr static bool debug_enabled = true; // Validation layers, etc.
+
+  std::unique_ptr<SDL_GPUDevice, constant<SDL_DestroyGPUDevice>> device_handle;
+  auto device() { return device_handle.get(); }
+
+  struct colored_vertex {
+    struct{ float x,y; } position;
+    struct{ uint8_t r,g,b,a; } color;
   };
 
-  constexpr static bool debug_enabled = true; // Validation layers, etc.
-  std::unique_ptr<SDL_GPUDevice, constant_t<SDL_DestroyGPUDevice>> device_handle;
-  SDL_GPUGraphicsPipeline* fill_rect_pipeline = nullptr;
+  graphics_pipeline fill_rect_pipeline;
 
 public:
   explicit render_context(SDL_Window* window):
@@ -40,52 +68,24 @@ public:
   {
     check_sdl_call(SDL_ClaimWindowForGPUDevice(device(), window));
 
-    static constexpr uint8_t vert_code[] = {
-      #embed "rect.vert.spv"
-    };
-    static constexpr uint8_t frag_code[] = {
-      #embed "rect.frag.spv"
-    };
-    shader_module vert_shader(device(), SDL_GPU_SHADERSTAGE_VERTEX, vert_code);
-    shader_module frag_shader(device(), SDL_GPU_SHADERSTAGE_FRAGMENT, frag_code);
-
-    SDL_GPUVertexBufferDescription buffer_description = {.pitch = 12};
-    SDL_GPUVertexAttribute vertex_attributes[] = {
-      {.location = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = 0}, // position
-      {.location = 1, .format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM, .offset = 8}, // color
-    };
-    SDL_GPUColorTargetDescription color_target = {
-      .format = SDL_GetGPUSwapchainTextureFormat(device(), window)
-    };
-
-    SDL_GPUGraphicsPipelineCreateInfo pci = {
-      .vertex_shader = vert_shader,
-      .fragment_shader = frag_shader,
-      .vertex_input_state = {
-        .vertex_buffer_descriptions = &buffer_description,
-        .num_vertex_buffers = 1,
-        .vertex_attributes = vertex_attributes,
-        .num_vertex_attributes = std::size(vertex_attributes)
-      },
+    fill_rect_pipeline = graphics_pipeline(device(), SDL_GPUGraphicsPipelineCreateInfo{
+      .vertex_shader = spirv_shader_module(device(), SDL_GPU_SHADERSTAGE_VERTEX, (uint8_t[]){
+        #embed "rect.vert.spv"
+      }),
+      .fragment_shader = spirv_shader_module(device(), SDL_GPU_SHADERSTAGE_FRAGMENT, (uint8_t[]){
+        #embed "rect.frag.spv"
+      }),
+      .vertex_input_state = vertex_input_state(0,
+        vert_attr(&colored_vertex::position, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2),
+        vert_attr(&colored_vertex::color, SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM)),
       .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-      .rasterizer_state = {
-        .fill_mode = SDL_GPU_FILLMODE_FILL,
-        .cull_mode = SDL_GPU_CULLMODE_NONE,
-      },
       .target_info = {
-        .color_target_descriptions = &color_target,
-        .num_color_targets = 1
+        .color_target_descriptions = &temporary(SDL_GPUColorTargetDescription{
+          .format = SDL_GetGPUSwapchainTextureFormat(device(), window)
+        }),
+        .num_color_targets = 1,
       },
-    };
-    fill_rect_pipeline = check_sdl_call(
-      SDL_CreateGPUGraphicsPipeline(device(), &pci),
-      "create rect pipeline");
-  }
-
-  render_context(const render_context&) = delete;
-
-  ~render_context() {
-    SDL_ReleaseGPUGraphicsPipeline(device(), fill_rect_pipeline);
+    });
   }
 };
 

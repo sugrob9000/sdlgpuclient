@@ -1,16 +1,18 @@
 #pragma once
 #include <cstdio>
-#include <cstdlib>
 #include <source_location>
 #include <type_traits>
 #include <utility>
+
+// ======================================================================================
+// Random utility...
 
 [[noreturn, gnu::always_inline, gnu::cold]]
 inline void assertion_failure(const char* assertion, std::source_location loc = std::source_location::current()) {
   fprintf(stderr, "Assertion '%s' failed in '%s' (%s:%d:%d)\n",
           assertion, loc.function_name(), loc.file_name(), loc.line(), loc.column());
   fflush(stderr);
-  std::abort();
+  __builtin_trap();
 }
 #define assert_release(x) ({\
   if (!(x)) [[unlikely]] {\
@@ -18,24 +20,48 @@ inline void assertion_failure(const char* assertion, std::source_location loc = 
   }\
 })
 
+// For passing temporaries into places that want an lvalue reference or a pointer
+template<typename t> t& temporary(t&& x) { return (t&)x; }
 
-template<typename T> T& unmove(T&& x) { return (T&) x; }
+// ======================================================================================
+// Member pointer traits
 
+template<typename> struct member_pointer_traits;
+template<typename O, typename I> struct member_pointer_traits<I O::*> {
+  using inner_type = I;
+  using outer_type = O;
+};
 
-template<auto x> struct constant_t {
+// For a pack of member pointers, if they have the same parent type, extract it
+template<typename...> struct common_outer_type;
+template<typename O, typename... I> struct common_outer_type<I O::*...> {
+  using type = O;
+};
+template<typename... t> using common_outer_type_t = common_outer_type<t...>::type;
+
+template<typename O, typename I> [[gnu::const]] size_t to_offset(I O::* ptr) {
+  static_assert(std::is_standard_layout_v<O>);
+  O* zero = nullptr;
+  return (size_t) &(zero->*ptr); // boost::intrusive does it this way...
+}
+
+// ======================================================================================
+// Type <-> value mappings
+template<auto x> struct constant {
   constexpr operator decltype(x)() const { return x; }
 };
-template<auto x> constexpr constant_t<x> constant;
+template<auto x> constexpr inline constant<x> constant_v;
 
+template<typename t> struct type_t { using type = t; };
+template<typename t> constexpr inline type_t<t> type_v;
 
-// TODO: more robust overloaded with support for
-// non-class callables, polymorphic class callables, etc.
-template<typename... fs> struct overloaded: fs... {
-  using fs::operator()...;
+// ======================================================================================
+template<typename... f> struct overloaded: f... {
+  using f::operator()...;
 };
-template<typename... fs> overloaded(fs&&...) -> overloaded<fs...>;
+template<typename... f> overloaded(f...) -> overloaded<f...>;
 
-
+// ======================================================================================
 template<typename F> class [[nodiscard]] scope_exit {
   F f;
   bool active = true;
