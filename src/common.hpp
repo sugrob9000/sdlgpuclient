@@ -26,29 +26,32 @@ template<typename t> t& temporary(t&& x) { return (t&)x; }
 // ======================================================================================
 // Member pointer traits
 
-template<typename> struct member_pointer_traits;
-template<typename O, typename I> struct member_pointer_traits<I O::*> {
-  using inner_type = I;
-  using outer_type = O;
+template<typename> struct member_ptr_traits;
+template<typename parent, typename member> struct member_ptr_traits<member parent::*> {
+  using parent_type = parent;
+  using member_type = member;
 };
 
 // For a pack of member pointers, if they have the same parent type, extract it
-template<typename...> struct common_outer_type;
-template<typename O, typename... I> struct common_outer_type<I O::*...> {
-  using type = O;
+template<typename...> struct common_parent_type;
+template<typename parent, typename... member> struct common_parent_type<member parent::*...> {
+  using type = parent;
 };
-template<typename... t> using common_outer_type_t = common_outer_type<t...>::type;
+template<typename... t> using common_parent_type_t = common_parent_type<t...>::type;
 
-template<typename O, typename I> [[gnu::const]] size_t to_offset(I O::* ptr) {
-  static_assert(std::is_standard_layout_v<O>);
-  O* zero = nullptr;
+// Convert member pointer to byte offset. There still seems no constexpr way to do it.
+template<typename parent, typename member> [[gnu::const]] size_t to_offset(member parent::* ptr) {
+  static_assert(std::is_standard_layout_v<parent>);
+  parent* zero = nullptr;
   return (size_t) &(zero->*ptr); // boost::intrusive does it this way...
 }
 
 // ======================================================================================
 // Type <-> value mappings
 template<auto x> struct constant {
-  constexpr operator decltype(x)() const { return x; }
+  using type = decltype(x);
+  constexpr static type value = x;
+  constexpr operator type() const { return x; }
 };
 template<auto x> constexpr inline constant<x> constant_v;
 

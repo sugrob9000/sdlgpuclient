@@ -1,8 +1,8 @@
-#include "render.hpp"
+#include "render-context.hpp"
 #include "sdl.hpp"
 #include "time.hpp"
 #include <SDL3/SDL.h>
-#include <thread>
+#include <fmt/base.h>
 
 static bool handle_events(sdl::window_context& wm) {
   bool keep_going = true;
@@ -24,11 +24,9 @@ static void render_thread() {
   frame_pacer pacer(60);
   while (handle_events(wm)) {
     pacer.wait_next();
+    sdl::frame_in_flight frame(rc);
+    frame.submit();
   }
-}
-
-static void gen_thread(std::stop_token stop) {
-  (void) stop;
 }
 
 int main() try {
@@ -38,8 +36,14 @@ int main() try {
   // the system main thread performs the duties of the "render thread", while
   // a separate thread that we spawn generates model changes and canvases.
   // We call the former a "gen thread".
-  std::jthread gen(gen_thread);
+#if 0
+  std::jthread gen([](std::stop_token stop) {
+    (void)stop;
+    //while (stop.stop_possible() && !stop.stop_requested()) {}
+  });
+#endif
   render_thread();
+
 } catch (std::exception& e) {
   fmt::println(stderr, "Exception: {}", e.what());
   return 1;
