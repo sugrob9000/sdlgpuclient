@@ -39,3 +39,6 @@ compile_shaders(app SHADERS
   fillcolor.vert
   fillcolor.frag
   textured.frag)
+
+add_subdirectory(3rd-party/imgui)
+target_link_libraries(app PRIVATE imgui)
