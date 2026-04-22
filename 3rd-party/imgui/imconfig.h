@@ -29,7 +29,7 @@
 //#define IMGUI_API __attribute__((visibility("default")))  // GCC/Clang: override visibility when set is hidden
 
 //---- Don't define obsolete functions/enums/behaviors. Consider enabling from time to time after updating to clean your code of obsolete function/names.
-//#define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+#define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
 
 //---- Disable all of Dear ImGui or don't implement standard windows/tools.
 // It is very strongly recommended to NOT disable the demo windows and debug tool during development. They are extremely useful in day to day work. Please read comments in imgui_demo.cpp.
@@ -111,8 +111,21 @@
         constexpr ImVec4(const MyVec4& f) : x(f.x), y(f.y), z(f.z), w(f.w) {}   \
         operator MyVec4() const { return MyVec4(x,y,z,w); }
 */
+namespace ImGui {
+  template<typename V, typename S=float> concept like_vec2 = requires(V v) {
+    v.x -> S;
+    v.y -> S;
+  };
+  template<typename V, typename S=float> concept like_vec4 = like_vec2<V,S> && requires(V v) {
+    v.w -> S;
+    v.z -> S;
+  };
+}
+#define IM_VEC2_CLASS_EXTRA constexpr ImVec2(ImGui::like_vec2 auto&& v): x(v.x), y(v.y) {}
+#define IM_VEC4_CLASS_EXTRA constexpr ImVec4(ImGui::like_vec4 auto&& v): x(v.x), y(v.y), z(v.z), w(v.w) {}
+
 //---- ...Or use Dear ImGui's own very basic math operators.
-//#define IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS
 
 //---- Use 32-bit vertex indices (default is 16-bit) is one way to allow large meshes with more than 64K vertices.
 // Your renderer backend will need to support it (most example renderer backends support both 16/32-bit indices).
