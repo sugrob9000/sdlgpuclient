@@ -31,7 +31,7 @@ auto check_sdl_result(auto result, auto... what) {
         [](bool b) { return !b; },
         [](int i) { return i < 0; },
         [](auto* p) { return !p; },
-        [](auto&&) { static_assert(0, "Unexpected result type in check_sdl_call"); },
+        [](auto&&) { static_assert(0, "Unexpected result type in check_sdl_result"); },
       }(result)) {
     throw sdl_error(SDL_GetError(), what...);
   }

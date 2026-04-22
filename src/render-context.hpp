@@ -16,7 +16,6 @@ class render_context {
   std::unique_ptr<SDL_GPUDevice, constant<SDL_DestroyGPUDevice>> device_handle;
 
   graphics_pipeline colored_rect_pipeline;
-  graphics_pipeline textured_rect_pipeline;
 
 public:
   explicit render_context(SDL_Window* w):
@@ -27,33 +26,19 @@ public:
   {
     check_sdl_result(SDL_ClaimWindowForGPUDevice(device(), window()));
 
-    spirv_shader_module vertex_shader(device(), SDL_GPU_SHADERSTAGE_VERTEX,
-      (uint8_t[]){
-        #embed "rect.vert.spv"
-      },
-      {.n_uniform_buffers = 1});
-
-    spirv_shader_module fragment_shader(device(), SDL_GPU_SHADERSTAGE_FRAGMENT, (uint8_t[]){
-      #embed "rect.frag.spv"
-    });
-
     single_color_target target(SDL_GetGPUSwapchainTextureFormat(device(), window()));
 
     colored_rect_pipeline = graphics_pipeline(device(), {
-      .vertex_shader = vertex_shader,
-      .fragment_shader = spirv_shader_module(device(), SDL_GPU_SHADERSTAGE_FRAGMENT, (uint8_t[]){
-        #embed "fill.frag.spv"
-      }),
+      .vertex_shader = spirv_shader_module(device(), SDL_GPU_SHADERSTAGE_VERTEX,
+        (uint8_t[]){
+          #embed "fillcolor.vert.spv"
+        },
+        {.n_uniform_buffers = 1}),
+      .fragment_shader = spirv_shader_module(device(), SDL_GPU_SHADERSTAGE_FRAGMENT,
+        (uint8_t[]){
+          #embed "fillcolor.frag.spv"
+        }),
       .vertex_input_state = vertex_input_state(&colored_vertex::pos, &colored_vertex::color),
-      .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-      .target_info = target});
-
-    textured_rect_pipeline = graphics_pipeline(device(), {
-      .vertex_shader = vertex_shader,
-      .fragment_shader = spirv_shader_module(device(), SDL_GPU_SHADERSTAGE_FRAGMENT, (uint8_t[]){
-        #embed "textured.frag.spv"
-      }),
-      .vertex_input_state = vertex_input_state(&textured_vertex::pos, &textured_vertex::uv),
       .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
       .target_info = target});
   }
@@ -77,31 +62,36 @@ struct [[nodiscard]] frame_in_flight {
     if (!SDL_WaitAndAcquireGPUSwapchainTexture(
           repr.cmdbuf, rc.window(), &repr.target,
           &repr.target_dimensions.w, &repr.target_dimensions.h)) {
-      sdl_error e(SDL_GetError(), "SDL_WaitAndAcquireGPUSwapchainTexture");
+      // capture SDL error string before next call invalidates it
+      sdl_error error(SDL_GetError(), "SDL_WaitAndAcquireGPUSwapchainTexture");
       check_sdl_result(SDL_CancelGPUCommandBuffer(repr.cmdbuf), "SDL_CancelGPUCommandBuffer");
-      throw e;
+      throw error;
     }
-    // past this point and until submit(), error handling is basically impossible...
+    // past this point and until submit(), error handling is basically impossible due to
+    // an omission in SDL_gpu. Swapchain images cannot be released without presenting them,
+    // and command buffers "bound" to swapchain images cannot be freed.
 
-    repr.pass = check_sdl_result(SDL_BeginGPURenderPass(repr.cmdbuf,
+    repr.pass = SDL_BeginGPURenderPass(
+      repr.cmdbuf,
       &temporary(SDL_GPUColorTargetInfo{
         .texture = repr.target,
         .clear_color = {.r=1, .g=1, .b=1, .a=1},
         .load_op = SDL_GPU_LOADOP_CLEAR,
         .store_op = SDL_GPU_STOREOP_STORE }),
-      1, nullptr));
+      1, nullptr);
   }
 
-  //struct drawcall {
-  //  struct texture* texture;
-  //  unsigned num_vertices, num_indices;
-  //  union {
-  //    colored_vertex* colored_vertices;   // when texture is null
-  //    textured_vertex* textured_vertices; // when texture is valid
-  //  };
-  //  uint16_t* indices;
-  //};
-  void push_drawcall(auto&&) {}
+  void push_drawcall(auto&&) {
+    //struct drawcall {
+    //  struct texture* texture;
+    //  unsigned num_vertices, num_indices;
+    //  union {
+    //    colored_vertex* colored_vertices;   // when texture is null
+    //    textured_vertex* textured_vertices; // when texture is valid
+    //  };
+    //  uint16_t* indices;
+    //};
+  }
 
   void submit() {
     SDL_EndGPURenderPass(repr.pass);

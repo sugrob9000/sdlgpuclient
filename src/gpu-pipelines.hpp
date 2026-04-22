@@ -55,7 +55,7 @@ struct [[nodiscard]] single_color_target {
 };
 
 // ======================================================================================
-// Known vertex formats
+// Vertex formats that exist in this program.
 
 template<vertex_element_format x> struct with_attribute_format { constexpr static auto vertex_format = x; };
 

@@ -1,7 +1,6 @@
 #include "render-context.hpp"
 #include "sdl.hpp"
 #include "time.hpp"
-#include <SDL3/SDL.h>
 #include <fmt/base.h>
 
 static bool handle_events(sdl::window_context& wm) {
@@ -9,7 +8,7 @@ static bool handle_events(sdl::window_context& wm) {
   while (auto event = wm.poll_event()) {
     if (event->type == SDL_EVENT_QUIT
         || (event->type == SDL_EVENT_KEY_DOWN
-            && (event->key.mod & SDL_KMOD_SHIFT)
+            //&& (event->key.mod & SDL_KMOD_SHIFT)
             && event->key.key == SDLK_Q)) {
       keep_going = false;
     }
@@ -21,6 +20,7 @@ static void render_thread() {
   sdl::init_guard sdl(SDL_INIT_VIDEO);
   sdl::window_context wm("app (shift+Q to quit)", {640, 480});
   sdl::render_context rc(wm.window());
+
   frame_pacer pacer(60);
   while (handle_events(wm)) {
     pacer.wait_next();
